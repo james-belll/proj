@@ -1,0 +1,76 @@
+import os
+import re
+import PyPDF2
+import google.generativeai as genai
+import tkinter as tk
+from tkinter import filedialog
+from config import GEMINI_API_KEY
+
+genai.configure(api_key=GEMINI_API_KEY)
+
+# Create the model once at the module level
+model = genai.GenerativeModel("models/gemini-1.5-flash")
+print(f"Model name: {model}")
+
+
+def choose_pdf_file():
+    root = tk.Tk()
+    root.withdraw()
+    file_path = filedialog.askopenfilename(
+        title="Select PDF file",
+        filetypes=[("PDF Files", "*.pdf")]
+    )
+    return file_path
+
+def extract_text(pdf_file: str):
+    with open(pdf_file, 'rb') as pdf:
+        reader = PyPDF2.PdfReader(pdf, strict=False)
+        pdf_text = []
+        for page in reader.pages:
+            content = page.extract_text()
+            if content:
+                pdf_text.append(content)
+        return "\n".join(pdf_text)
+
+def clean_text(text):
+    text = re.sub(r'(?<!\n)\n(?!\n)', ' ', text)
+    text = re.sub(r'\n{2,}', '\n\n', text)
+    return text.strip()
+
+def summarize_text_with_gemini(pdf_text: str, max_words: int, style: str):
+    system_prompt = "You are a helpful assistant expert in summarizing.\n\n"
+    dynamic_prompt = f"Summarize this PDF with a max number of words of {max_words} and the style: {style}.\n\n"
+    full_prompt = system_prompt + dynamic_prompt + pdf_text
+    
+    print("\nPrompt being sent to Gemini:\n")
+    print(full_prompt[:500] + "\n...\n")
+    
+    # Use the global model instead of creating a new one
+    response = model.generate_content(full_prompt)
+    return response.text
+
+if __name__ == '__main__':
+    print("Please choose a PDF file to summarize...")
+    pdf_path = choose_pdf_file()
+    
+    if not pdf_path or not os.path.exists(pdf_path):
+        print("Error: File not found or selection cancelled.")
+        exit()
+    try:
+        max_words = int(input("Enter the maximum number of words for the summary: ").strip())
+    except ValueError:
+        print("Invalid number. Using default of 500 words.")
+        max_words = 500
+
+    style = input("Enter the summary style (e.g., formal, casual, bullet points): ").strip()
+    if not style:
+        print("No style entered. Using 'formal'.")
+        style = "formal"
+    
+        
+    raw_text = extract_text(pdf_path)
+    cleaned_text = clean_text(raw_text)
+    summary = summarize_text_with_gemini(cleaned_text, max_words, style)
+    
+    print("\n--- Summary ---\n")
+    print(summary)
