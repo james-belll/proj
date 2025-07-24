@@ -1,0 +1,133 @@
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox, scrolledtext
+import threading
+import os
+from og import extract_text, clean_text, summarize_text_with_gemini
+
+class PDFSummarizerUI:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("PDF Summarizer")
+        self.root.geometry("600x500")
+        
+        # Variables
+        self.pdf_path = tk.StringVar()
+        self.max_words = tk.IntVar(value=500)
+        self.style = tk.StringVar(value="formal")
+        
+        self.setup_ui()
+    
+    def setup_ui(self):
+        # Main frame
+        main_frame = ttk.Frame(self.root, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Title
+        title_label = ttk.Label(main_frame, text="PDF Summarizer", font=('Arial', 16, 'bold'))
+        title_label.pack(pady=(0, 20))
+        
+        # File selection
+        file_frame = ttk.Frame(main_frame)
+        file_frame.pack(fill=tk.X, pady=10)
+        
+        ttk.Label(file_frame, text="PDF File:").pack(side=tk.LEFT)
+        file_entry = ttk.Entry(file_frame, textvariable=self.pdf_path, width=40)
+        file_entry.pack(side=tk.LEFT, padx=(10, 5), fill=tk.X, expand=True)
+        ttk.Button(file_frame, text="Browse", command=self.browse_file).pack(side=tk.RIGHT)
+        
+        # Settings
+        settings_frame = ttk.LabelFrame(main_frame, text="Settings", padding="10")
+        settings_frame.pack(fill=tk.X, pady=10)
+        
+        # Max words
+        ttk.Label(settings_frame, text="Max Words:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        ttk.Spinbox(settings_frame, from_=50, to=2000, textvariable=self.max_words, width=10).grid(row=0, column=1, sticky=tk.W, padx=(10, 0), pady=5)
+        
+        # Style
+        ttk.Label(settings_frame, text="Style:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        style_combo = ttk.Combobox(settings_frame, textvariable=self.style, 
+                                  values=["formal", "casual", "bullet points", "academic", "business"], 
+                                  width=15)
+        style_combo.grid(row=1, column=1, sticky=tk.W, padx=(10, 0), pady=5)
+        
+        # Summarize button
+        self.summarize_button = ttk.Button(main_frame, text="Generate Summary", command=self.start_summarization)
+        self.summarize_button.pack(pady=20)
+        
+        # Status label
+        self.status_label = ttk.Label(main_frame, text="Ready to process PDF files")
+        self.status_label.pack(pady=5)
+        
+        # Results area
+        results_frame = ttk.LabelFrame(main_frame, text="Summary Results", padding="10")
+        results_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+        
+        # Text area with scrollbar
+        self.result_text = scrolledtext.ScrolledText(results_frame, wrap=tk.WORD, font=('Arial', 10))
+        self.result_text.pack(fill=tk.BOTH, expand=True)
+    
+    def browse_file(self):
+        """Open file dialog to select PDF"""
+        filename = filedialog.askopenfilename(
+            title="Select PDF file",
+            filetypes=[("PDF Files", "*.pdf"), ("All Files", "*.*")]
+        )
+        if filename:
+            self.pdf_path.set(filename)
+    
+    def start_summarization(self):
+        """Start the summarization process"""
+        if not self.pdf_path.get():
+            messagebox.showwarning("Warning", "Please select a PDF file first.")
+            return
+            
+        if not os.path.exists(self.pdf_path.get()):
+            messagebox.showerror("Error", "Selected file does not exist.")
+            return
+        
+        # Start processing in a separate thread
+        thread = threading.Thread(target=self.process_summarization)
+        thread.daemon = True
+        thread.start()
+    
+    def process_summarization(self):
+        """Process the PDF summarization using the same logic as og.py"""
+        try:
+            self.root.after(0, lambda: self.status_label.config(text="Processing..."))
+            self.root.after(0, lambda: self.summarize_button.config(state='disabled'))
+            
+            # Use the same logic as the end of og.py
+            pdf_path = self.pdf_path.get()
+            max_words = self.max_words.get()
+            style = self.style.get()
+            
+            # Extract and clean text
+            raw_text = extract_text(pdf_path)
+            cleaned_text = clean_text(raw_text)
+            
+            # Generate summary
+            summary = summarize_text_with_gemini(cleaned_text, max_words, style)
+            
+            # Display results
+            self.root.after(0, lambda: self.display_results(summary))
+            self.root.after(0, lambda: self.status_label.config(text="Summary completed!"))
+            
+        except Exception as e:
+            self.root.after(0, lambda: messagebox.showerror("Error", f"An error occurred: {str(e)}"))
+            self.root.after(0, lambda: self.status_label.config(text="Error occurred"))
+        finally:
+            self.root.after(0, lambda: self.summarize_button.config(state='normal'))
+    
+    def display_results(self, summary):
+        """Display the summary results"""
+        self.result_text.delete(1.0, tk.END)
+        self.result_text.insert(tk.END, summary)
+        self.result_text.see(1.0)  # Scroll to top
+
+def main():
+    root = tk.Tk()
+    app = PDFSummarizerUI(root)
+    root.mainloop()
+
+if __name__ == "__main__":
+    main() 
